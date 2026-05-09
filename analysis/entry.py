@@ -15,7 +15,7 @@ from analysis.output import build_analysis_output
 
 TOP_ITEMS_PER_SECTOR = 8
 TOP_STOCKS_PER_SECTOR = 6
-STOCKS_DICT_PATH = 'stocks_dict.csv'
+STOCKS_DICT_PATH = 'data/stocks_dict.csv'
 
 _XUEQIU_STOCK_RE = re.compile(r'\$([^$\(\)]{1,20})\((S[HZ]\d{6}|BJ\d{6})\)\$')
 

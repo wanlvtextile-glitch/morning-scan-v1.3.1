@@ -1,15 +1,16 @@
-# agent_layer/agents/semantic_judgment.py
+# agents/impl/semantic_judgment.py
 # SemanticJudgmentAgent：Node 8（review）+ Node 5（stock_auth）+ Node 7（conclusion）
 # 职责：语义判断——审核 Python 判断、判断正宗度、生成综合结论
 
 import json
 
-from .base_agent import BaseAgent
+from agents.base import BaseAgent
+from agents.interface import ScanAgentInterface
 
 
-class SemanticJudgmentAgent(BaseAgent):
+class SemanticJudgmentAgent(BaseAgent, ScanAgentInterface):
 
-    def run(self, state) -> None:
+    def enrich(self, state) -> None:
         agent_cfg = self._config.agents.get('semantic_judgment', {})
         if not agent_cfg.get('enabled', True):
             return

@@ -182,7 +182,7 @@ AGENT_LAYER_ENABLED=false
 ```bash
 # 验证核心模块
 python -c "from collector.entry import collect; print('collector OK')"
-python -c "from agent_layer import assemble_state, run_agents, write_scan_result; print('agent_layer OK')"
+python -c "from agents import assemble_state, run_agents, write_scan_result; print('agents OK')"
 
 # 运行测试（需安装 pytest）
 pip install pytest

@@ -12,14 +12,14 @@ def create_provider(config) -> BaseProvider:
     name = config.provider_name.lower()
 
     if name == 'anthropic':
-        from .anthropic_provider import AnthropicProvider
+        from .anthropic import AnthropicProvider
         return AnthropicProvider(
             api_key=config.anthropic_key,
             model=config.model,
         )
 
     if name == 'openai':
-        from .openai_provider import OpenAIProvider
+        from .openai_compat import OpenAIProvider
         return OpenAIProvider(
             api_key=config.openai_key,
             model=config.model,

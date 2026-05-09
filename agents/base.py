@@ -1,5 +1,6 @@
-# agent_layer/agents/base_agent.py
+# agents/base.py
 # BaseAgent：agent 公共能力（LLM 调用、JSON 解析、提示词加载）
+# 所有 impl/ 下的具体 agent 继承此类
 
 import json
 import os
@@ -63,9 +64,7 @@ class BaseAgent:
         return None
 
     def _load_prompt(self, filename: str) -> str:
-        """从 agent_layer/prompts/ 加载提示词文件。"""
-        path = os.path.join(
-            os.path.dirname(os.path.dirname(__file__)), 'prompts', filename
-        )
+        """从 agents/prompts/ 加载提示词文件。"""
+        path = os.path.join(os.path.dirname(__file__), 'prompts', filename)
         with open(path, encoding='utf-8') as f:
             return f.read().strip()

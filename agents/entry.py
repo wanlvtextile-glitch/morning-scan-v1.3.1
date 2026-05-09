@@ -1,6 +1,6 @@
-# agent_layer/entry.py
-# run_agents：Agent 层主编排入口
-# write_scan_result：写入唯一最终结构化产物 scan_result.json
+# agents/entry.py
+# run_agents：统一 agent 运行入口（支持自定义 agent_classes）
+# write_scan_result：写入最终结构化产物 scan_result.json
 # 被谁调用：analyzer._analyze()
 
 import json
@@ -8,16 +8,19 @@ import os
 import time
 
 
-def run_agents(state) -> None:
+def run_agents(state, agent_classes=None) -> None:
     """
-    运行 InfoEnrichmentAgent → SemanticJudgmentAgent，原地填充 state.editorial。
+    统一 agent 运行入口。原地填充 state.editorial。
+
+    agent_classes：实现 ScanAgentInterface 的类列表。
+                   传 None 时使用默认早盘扫描 agents（InfoEnrichment + SemanticJudgment）。
+                   传自定义列表即可接入其他场景的 agent，无需修改此函数。
+
     state.meta 的 agent_enabled / agent_calls_made / agent_duration_sec 由此函数写入。
     若 agent 层未启用或 API Key 缺失，静默跳过，state 保持 None 占位不变。
     """
-    from agent_layer.config import AgentConfig
-    from agent_layer.provider.factory import create_provider
-    from agent_layer.agents.info_enrichment import InfoEnrichmentAgent
-    from agent_layer.agents.semantic_judgment import SemanticJudgmentAgent
+    from agents.config import AgentConfig
+    from agents.provider.factory import create_provider
 
     cfg = AgentConfig()
     state.meta['agent_enabled'] = cfg.enabled
@@ -32,21 +35,21 @@ def run_agents(state) -> None:
         state.meta['agent_enabled'] = False
         return
 
+    if agent_classes is None:
+        from agents.impl.info_enrichment import InfoEnrichmentAgent
+        from agents.impl.semantic_judgment import SemanticJudgmentAgent
+        agent_classes = [InfoEnrichmentAgent, SemanticJudgmentAgent]
+
     t_start     = time.time()
     total_calls = 0
 
     try:
-        info_agent = InfoEnrichmentAgent(provider, cfg)
-        info_agent.run(state)
-        total_calls += info_agent.call_count
-        print(f'[Agent] InfoEnrichment 完成：{info_agent.call_count} 次调用，'
-              f'{info_agent.total_ms} ms')
-
-        sem_agent = SemanticJudgmentAgent(provider, cfg)
-        sem_agent.run(state)
-        total_calls += sem_agent.call_count
-        print(f'[Agent] SemanticJudgment 完成：{sem_agent.call_count} 次调用，'
-              f'{sem_agent.total_ms} ms')
+        for AgentClass in agent_classes:
+            agent = AgentClass(provider, cfg)
+            agent.enrich(state)
+            total_calls += agent.call_count
+            print(f'[Agent] {AgentClass.__name__} 完成：{agent.call_count} 次调用，'
+                  f'{agent.total_ms} ms')
 
     except Exception as e:
         print(f'[Agent] 运行异常（降级继续，不影响报告输出）：{e}')

@@ -1,15 +1,16 @@
-# agent_layer/agents/info_enrichment.py
+# agents/impl/info_enrichment.py
 # InfoEnrichmentAgent：Node 3（hotrank_summary）+ Node 4（hotrank_stocks）+ Node 9（stock_supplement）
 # 职责：信息填充——为 hotrank 生成背景摘要和关注个股，为主线板块补充遗漏个股
 
 import json
 
-from .base_agent import BaseAgent
+from agents.base import BaseAgent
+from agents.interface import ScanAgentInterface
 
 
-class InfoEnrichmentAgent(BaseAgent):
+class InfoEnrichmentAgent(BaseAgent, ScanAgentInterface):
 
-    def run(self, state) -> None:
+    def enrich(self, state) -> None:
         agent_cfg = self._config.agents.get('info_enrichment', {})
         if not agent_cfg.get('enabled', True):
             return

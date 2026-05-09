@@ -45,7 +45,7 @@ cp .env.example .env
 
 ```bash
 python -c "from collector.entry import collect; print('OK')"
-python -c "from agent_layer import run_agents; print('OK')"
+python -c "from agents import run_agents; print('OK')"
 ```
 
 两行均输出 `OK` 即安装成功。

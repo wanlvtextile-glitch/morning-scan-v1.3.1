@@ -116,7 +116,7 @@ def _analyze(all_items: list, confidence: str, source_stats: list,
     editorial_result = build_editorial(analysis_result['sectors'], context)
 
     # agent 层：装配 state，运行两个 agent（可通过 AGENT_LAYER_ENABLED=false 禁用）
-    from agent_layer import assemble_state, run_agents, write_scan_result
+    from agents import assemble_state, run_agents, write_scan_result
     state = assemble_state(
         analysis_result,
         editorial_result,
