@@ -11,8 +11,101 @@
 #   python pipeline.py                        # 直接运行
 #   from pipeline import run_pipeline         # 被 run.py 调用
 
+import os
+import sys
+
 from collector import collect
 from analyzer import run_analysis
+
+
+# ── 启动前配置校验 ────────────────────────────────────────
+
+def _load_env_for_check():
+    """加载 .env，仅用于启动检查（不覆盖已有系统变量）"""
+    env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
+    if not os.path.exists(env_path):
+        return False
+    with open(env_path, encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith('#') and '=' in line:
+                k, v = line.split('=', 1)
+                os.environ.setdefault(k.strip(), v.strip())
+    return True
+
+
+def _check_config():
+    """
+    启动前校验必填配置项。任一项缺失则打印明确错误并退出，不进入采集流程。
+    校验项：
+      1. .env 文件存在
+      2. XUEQIU_COOKIE 非空
+      3. AGENT_LAYER_ENABLED=true 时，对应 LLM API Key 非空
+    """
+    env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
+    if not os.path.exists(env_path):
+        print('\n[启动失败] 找不到 .env 配置文件')
+        print('  请执行：cp .env.example .env')
+        print('  然后填写 XUEQIU_COOKIE 和 LLM 配置后重新运行')
+        sys.exit(1)
+
+    _load_env_for_check()
+
+    errors = []
+
+    # 校验雪球 Cookie
+    cookie = os.environ.get('XUEQIU_COOKIE', '').strip()
+    if not cookie:
+        errors.append(
+            'XUEQIU_COOKIE 未填写（雪球数据源必需）\n'
+            '    获取方式：浏览器登录 xueqiu.com → F12 → Network\n'
+            '              → 任意 xueqiu.com 请求 → Request Headers → 复制 Cookie 值\n'
+            '    填写位置：.env 文件第一行 XUEQIU_COOKIE='
+        )
+
+    # 校验 LLM 配置（仅在 AGENT_LAYER_ENABLED=true 时）
+    agent_enabled = os.environ.get('AGENT_LAYER_ENABLED', 'false').lower() == 'true'
+    if agent_enabled:
+        provider = os.environ.get('LLM_PROVIDER', '').strip()
+        if not provider:
+            errors.append(
+                'AGENT_LAYER_ENABLED=true 但 LLM_PROVIDER 未填写\n'
+                '    请在 .env 中取消选择的服务商注释并填入 API Key\n'
+                '    或设置 AGENT_LAYER_ENABLED=false 跳过 Agent 层（报告会缺少个股分析）'
+            )
+        elif provider == 'anthropic':
+            if not os.environ.get('ANTHROPIC_API_KEY', '').strip():
+                errors.append(
+                    'LLM_PROVIDER=anthropic 但 ANTHROPIC_API_KEY 未填写\n'
+                    '    注册：console.anthropic.com → API Keys → 生成 Key（格式 sk-ant-api03-...）\n'
+                    '    或设置 AGENT_LAYER_ENABLED=false 跳过 Agent 层'
+                )
+        elif provider == 'openai':
+            if not os.environ.get('OPENAI_API_KEY', '').strip():
+                errors.append(
+                    'LLM_PROVIDER=openai 但 OPENAI_API_KEY 未填写\n'
+                    '    请填写对应服务商（DeepSeek / 智谱 / 小米等）的 API Key\n'
+                    '    或设置 AGENT_LAYER_ENABLED=false 跳过 Agent 层'
+                )
+            if not os.environ.get('OPENAI_BASE_URL', '').strip():
+                errors.append(
+                    'LLM_PROVIDER=openai 但 OPENAI_BASE_URL 未填写\n'
+                    '    示例：OPENAI_BASE_URL=https://api.deepseek.com/v1\n'
+                    '    请填写服务商提供的 Base URL'
+                )
+        else:
+            errors.append(
+                f'LLM_PROVIDER="{provider}" 不支持，仅支持 anthropic 或 openai'
+            )
+
+    if errors:
+        print('\n[启动失败] 请先完成以下配置，再重新运行：\n')
+        for i, msg in enumerate(errors, 1):
+            print(f'  {i}. {msg}\n')
+        print('  配置文件：.env（参考 .env.example）')
+        sys.exit(1)
+
+    print('[配置检查] OK')
 
 
 # ── 内部工具 ─────────────────────────────────────────────
@@ -110,6 +203,8 @@ def run_pipeline() -> dict:
     早盘扫描全流程串联层（Python 阶段）。
     返回 analysis_result dict（含 report_result）。
     """
+    _check_config()
+
     _sep('Step 1 · 数据采集')
     collector_output = collect()
 
