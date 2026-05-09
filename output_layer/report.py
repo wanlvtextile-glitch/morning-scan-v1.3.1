@@ -285,33 +285,28 @@ def _render_market_context_pkg(pkg: dict) -> str:
                 f'| {item["price"]} | {item["change_pct"]} |'
             )
     else:
-        lines.append('> ⚠️ 美股数据采集失败，请通过 WebSearch 补充')
-        lines.append(f'**{us_label}美股走强：** （Claude补全）')
-        lines.append(f'**{us_label}美股走弱：** （Claude补全）')
+        lines.append('> ⚠️ 美股数据采集失败，已略去')
 
     return '\n'.join(lines)
 
 
 def _render_stock_candidates_table(candidates: list) -> str:
-    """渲染个股候选表（含驱动列和正宗度占位）"""
+    """渲染个股候选表"""
     if not candidates:
-        return '_（暂无自动识别到的个股候选，Claude 需从 top_items 手动补充）_'
+        return '_（本次扫描未识别到个股候选）_'
 
     lines = []
     lines.append('| 代码 | 名称 | 提及数 | 驱动 | 正宗度 | 正宗度依据 | 核心理由 |')
     lines.append('|------|------|--------|------|--------|-----------|---------|')
     for c in candidates:
-        code     = c.get('code') or '待补'
+        code     = c.get('code') or '—'
         name     = c.get('name', '')
         cnt      = c.get('mention_count', 0)
         driver   = c.get('driver_display', '人气讨论')
         auth     = c.get('authenticity') or '—'
-        evidence = c.get('authenticity_evidence') or '（待Claude补全）'
-        reason   = c.get('core_reason') or '（待Claude补全）'
+        evidence = c.get('authenticity_evidence') or '—'
+        reason   = c.get('core_reason') or '—'
         lines.append(f'| {code} | {name} | {cnt} | {driver} | {auth} | {evidence} | {reason} |')
-    n = len(candidates)
-    lines.append('')
-    lines.append(f'> Python 自动识别 {n} 只。请检查上方 top_items，将遗漏个股补入表格末尾（格式同上，代码可填"待查"）。')
     return '\n'.join(lines)
 
 
@@ -352,23 +347,23 @@ def _render_hidden_signals_pkg(pkg: dict) -> str:
         return ''
 
     lines = ['## ⚠️ 人气榜隐藏信号', '']
-    lines.append('| 人气排名 | 人气榜板块 | 涨跌幅 | 说明 | 关注标的（Claude补全） |')
-    lines.append('|---------|-----------|-------|------|----------------------|')
+    lines.append('| 人气排名 | 人气榜板块 | 涨跌幅 | 说明 | 关注标的 |')
+    lines.append('|---------|-----------|-------|------|--------|')
     for sig in signals:
         rank    = sig.get('rank', '?')
         hname   = sig.get('hotrank_name', '')
         chg     = sig.get('change_pct', '')
-        summary = sig.get('websearch_summary') or '（Claude补充专项查询摘要）'
-        stocks  = sig.get('focus_stocks', '') or '（Claude补全）'
+        summary = sig.get('websearch_summary') or '—'
+        stocks  = sig.get('focus_stocks', '') or '—'
         lines.append(f'| #{rank} | {hname} | {chg} | {summary} | {stocks} |')
     return '\n'.join(lines)
 
 
 def _render_groups_section(pkg: dict) -> str:
-    """渲染分组全景（Python 草稿）"""
+    """渲染分组全景"""
     groups = pkg.get('report_views', {}).get('groups', {})
 
-    sections = ['## 分组全景（Python 草稿）', '']
+    sections = ['## 分组全景', '']
     for group in GROUP_ORDER:
         renderer = _SECTOR_RENDERER[group]
         heading  = _GROUP_HEADING[group]
@@ -392,7 +387,7 @@ def _render_groups_section(pkg: dict) -> str:
 
 
 def _render_conclusion(pkg: dict) -> str:
-    """渲染扫描结论（Claude 占位）"""
+    """渲染扫描结论"""
     rec     = pkg.get('report_views', {}).get('final_recommendations', {})
     primary = rec.get('primary_lines', [])
     cands   = rec.get('candidate_lines', [])
@@ -402,16 +397,34 @@ def _render_conclusion(pkg: dict) -> str:
     lines = ['## 扫描结论', '']
     if text:
         lines.append(text)
-    else:
-        lines.append('（Claude 补全：主线逻辑、发酵候选说明、观察要点）')
         lines.append('')
-        if primary:
-            lines.append(f'**今日主盯**：{"、".join(primary)}')
-        if cands:
-            lines.append(f'**发酵观察**：{"、".join(cands)}')
-        if watch:
-            lines.append(f'**人气等待**：{"、".join(watch)}')
+    if primary:
+        lines.append(f'**今日主盯**：{"、".join(primary)}')
+    if cands:
+        lines.append(f'**发酵观察**：{"、".join(cands)}')
+    if watch:
+        lines.append(f'**人气等待**：{"、".join(watch)}')
     return '\n'.join(lines)
+
+
+def _completeness_issues(pkg: dict) -> list:
+    """
+    返回报告完成度不足的问题列表（空列表 = 完整）。
+    检查项：
+      - conclusion_text 是否已填
+      - top_sectors 中各个股的 authenticity 是否已填
+    """
+    issues = []
+    views = pkg.get('report_views', {})
+    rec   = views.get('final_recommendations', {})
+    if not rec.get('conclusion_text'):
+        issues.append('扫描结论未生成')
+    for s in views.get('top_sectors', []):
+        nulls = [c.get('name', '') for c in s.get('stock_candidates', [])
+                 if c.get('authenticity') is None]
+        if nulls:
+            issues.append(f'{s["name"]} 个股正宗度未完成：{"、".join(nulls)}')
+    return issues
 
 
 def _render_reference_sources(pkg: dict) -> str:
@@ -442,13 +455,22 @@ def build_markdown_from_package(pkg: dict) -> str:
     time_str = gen_at[11:16] if len(gen_at) >= 16 else ''
 
     conf     = meta.get('confidence', 'unknown')
+    issues   = _completeness_issues(pkg)
     sections = []
 
-    # 标题
-    sections.append(f'# 早盘热点扫描 · {date}')
+    # 标题（草稿标记）
+    draft_tag = ' [草稿]' if issues else ''
+    sections.append(f'# 早盘热点扫描 · {date}{draft_tag}')
     if time_str:
         sections.append(f'生成时间：{time_str}')
     sections.append('')
+
+    # 完成度警告
+    if issues:
+        sections.append('> **[草稿]** 以下字段尚未完成，报告为草稿状态：')
+        for iss in issues:
+            sections.append(f'> - {iss}')
+        sections.append('')
 
     # 置信度告警
     if conf == 'low':
@@ -520,10 +542,12 @@ def build_brief_markdown(pkg: dict) -> str:
     hidden  = views.get('hidden_signals', [])
     rec     = views.get('final_recommendations', {})
 
-    lines = [f'# 早盘扫描简报 · {date}', '']
+    issues    = _completeness_issues(pkg)
+    draft_tag = ' [草稿]' if issues else ''
+    lines = [f'# 早盘扫描简报 · {date}{draft_tag}', '']
 
     # 核心方向表
-    lines.append('## 核心方向（Python草稿）')
+    lines.append('## 核心方向')
     lines.append('')
     lines.append('| # | 板块 | 热度 | 阶段 | 持续性 | 发酵概率 | 分组 |')
     lines.append('|---|------|------|------|--------|---------|------|')
@@ -550,12 +574,16 @@ def build_brief_markdown(pkg: dict) -> str:
             )
         lines.append('')
 
-    # 结论要点占位
-    lines.append('## 结论要点（Claude补全）')
+    # 结论要点（优先使用 agent 生成的 conclusion_text）
+    lines.append('## 结论要点')
     lines.append('')
-    primary = rec.get('primary_lines', [])
-    cands   = rec.get('candidate_lines', [])
-    watch   = rec.get('watch_list', [])
+    conclusion = rec.get('conclusion_text')
+    primary    = rec.get('primary_lines', [])
+    cands      = rec.get('candidate_lines', [])
+    watch      = rec.get('watch_list', [])
+    if conclusion:
+        lines.append(conclusion)
+        lines.append('')
     if primary:
         lines.append(f'**今日主盯**：{"、".join(primary)}')
     if cands:

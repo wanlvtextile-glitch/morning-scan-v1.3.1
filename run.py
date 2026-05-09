@@ -16,6 +16,12 @@
 
 import sys
 
+# Windows GBK 控制台不能直接渲染 UTF-8 emoji；强制重定向为 UTF-8，避免 UnicodeEncodeError
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
 # 早盘扫描任务的触发关键词列表
 # 用户输入包含其中任意一个即视为匹配
 MORNING_SCAN_KEYWORDS = [
@@ -42,11 +48,11 @@ def match_task(user_input: str):
 
 
 def run_task(task_name: str):
-    """根据任务名执行对应任务"""
+    """根据任务名执行对应任务（委托 cli.cmd_run，共享配置检查和向导逻辑）"""
     if task_name == 'morning_scan':
         print(f'[触发] 任务：早盘扫描  →  启动全流程串联层')
-        from pipeline import run_pipeline
-        run_pipeline()
+        from cli import cmd_run
+        cmd_run(None)
     else:
         # 当前只有一个任务，此分支供未来扩展时排查用
         print(f'[错误] 未知任务：{task_name}')

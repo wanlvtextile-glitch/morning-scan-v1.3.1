@@ -126,9 +126,11 @@ def check_env() -> dict:
             )
             result['llm']['ok'] = False
     else:
-        result['warnings'].append(
-            'AGENT_LAYER_ENABLED=false：报告将缺少个股正宗度分析和综合结论\n'
-            '  如需完整报告，填写 LLM API Key 并将此项改为 true'
+        result['errors'].append(
+            'AGENT_LAYER_ENABLED=false：LLM API 未配置，无法生成完整报告\n'
+            '  修复：在 .env 中选择一个 LLM 服务商，填入 API Key，\n'
+            '        并将 AGENT_LAYER_ENABLED 改为 true\n'
+            '  参考：README.md → LLM API 配置章节，或运行 python cli.py run 进入配置向导'
         )
 
     result['ready'] = len(result['errors']) == 0
@@ -169,8 +171,9 @@ def check_packages() -> dict:
 
 def assert_ready() -> None:
     """
-    校验环境，若不满足则打印错误并 sys.exit(1)。
-    供 pipeline.run_pipeline() 在执行前调用。
+    校验环境，若不满足则打印结构化错误提示并 sys.exit(1)。
+    供 pipeline.run_pipeline() 在执行前调用（兜底安全门禁）。
+    主要错误提示由 cli.cmd_run() 负责；此处作为二次保障。
     """
     result = check_env()
     if result['ready']:
@@ -179,5 +182,7 @@ def assert_ready() -> None:
     print('\n[启动失败] 请先完成以下配置，再重新运行：\n')
     for i, err in enumerate(result['errors'], 1):
         print(f'  {i}. {err}\n')
-    print('  配置文件：.env（参考 .env.example）')
+    print(f'  配置文件路径：{result["env_file"]["path"]}')
+    print(f'  配置模板参考：.env.example')
+    print(f'\n  配置完成后运行：python cli.py run\n')
     sys.exit(1)

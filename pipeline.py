@@ -7,6 +7,14 @@
 #   python pipeline.py                  # 直接运行（同 cli.py run）
 #   from pipeline import run_pipeline   # 被 run.py / cli.py 调用
 
+import sys
+
+# Windows GBK 控制台不能直接渲染 UTF-8 emoji；强制重定向为 UTF-8，避免 UnicodeEncodeError
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
 from collector import collect
 from analyzer import run_analysis
 from checks import assert_ready

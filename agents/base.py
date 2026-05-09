@@ -11,10 +11,18 @@ import time
 class BaseAgent:
 
     def __init__(self, provider, config):
-        self._provider  = provider
-        self._config    = config
-        self.call_count = 0
-        self.total_ms   = 0
+        self._provider    = provider
+        self._config      = config
+        self._call_count  = 0
+        self._total_ms    = 0
+
+    @property
+    def call_count(self) -> int:
+        return self._call_count
+
+    @property
+    def total_ms(self) -> int:
+        return self._total_ms
 
     def _call_llm(self, messages: list, *, json_mode: bool = True, timeout: int = None):
         """调用 LLM，带重试，返回文本或 None（失败时）。"""
@@ -25,8 +33,8 @@ class BaseAgent:
             try:
                 t0   = time.time()
                 text = self._provider.chat(messages, json_mode=json_mode, timeout=_timeout)
-                self.call_count += 1
-                self.total_ms   += int((time.time() - t0) * 1000)
+                self._call_count += 1
+                self._total_ms   += int((time.time() - t0) * 1000)
                 return text
             except Exception as e:
                 if attempt < max_r:

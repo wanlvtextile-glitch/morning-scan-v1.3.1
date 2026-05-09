@@ -37,7 +37,7 @@ def apply_stage_rules(sector: dict) -> tuple:
 
     # 发酵中（人气榜路径：价格行为确认，无需文本多源）
     # 人气榜本身是独立的价格信号，与文本讨论量共同构成双信号确认
-    if hr_rank <= 10 and eff >= 4 and recap_f < 0.50:
+    if hr_rank <= 10 and eff >= 2 and recap_f < 0.50:
         if src >= 2:
             signals.append(f'多源共振（{src}源）')
         else:

@@ -166,6 +166,7 @@ def fetch_us_market_data(us_market_date: str) -> Optional[list]:
             })
         except Exception as exc:
             logger.warning('美股指数 %s 采集失败: %s', display, exc)
+            print(f'[市场数据] 美股指数 {display} 采集失败（可能为代理限制，不影响 A 股报告）：{type(exc).__name__}')
 
     # ── ETF + 个股（stock_us_hist：change_pct 由 API 直接提供）──────
     if us_market_date:
@@ -206,5 +207,6 @@ def fetch_us_market_data(us_market_date: str) -> Optional[list]:
             })
         except Exception as exc:
             logger.warning('美股 %s (%s) 采集失败: %s', display, sym, exc)
+            print(f'[市场数据] 美股 {display}({sym}) 采集失败（可能为代理限制）：{type(exc).__name__}')
 
     return result if result else None

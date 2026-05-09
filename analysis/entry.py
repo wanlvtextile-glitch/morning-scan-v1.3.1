@@ -4,6 +4,7 @@
 # 被谁调用：analyzer.py（_analyze 管道）
 
 import csv
+import os
 import re
 from collections import Counter
 from typing import Optional
@@ -15,7 +16,9 @@ from analysis.output import build_analysis_output
 
 TOP_ITEMS_PER_SECTOR = 8
 TOP_STOCKS_PER_SECTOR = 6
-STOCKS_DICT_PATH = 'data/stocks_dict.csv'
+STOCKS_DICT_PATH = os.path.normpath(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data', 'stocks_dict.csv')
+)
 
 _XUEQIU_STOCK_RE = re.compile(r'\$([^$\(\)]{1,20})\((S[HZ]\d{6}|BJ\d{6})\)\$')
 
