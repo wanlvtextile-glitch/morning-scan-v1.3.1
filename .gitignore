@@ -1,0 +1,15 @@
+# 用户密钥，绝不提交
+.env
+
+# 运行时产物（每次 run.py 自动生成）
+raw_news.json
+analysis_result.json
+*-scan_result.json
+reports/*.md
+!reports/.gitkeep
+
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/

@@ -1,0 +1,27 @@
+{
+  "enabled": true,
+  "timeout_seconds": 25,
+  "max_retries": 2,
+  "agents": {
+    "info_enrichment": {
+      "enabled": true,
+      "nodes": {
+        "hotrank_summary": {"enabled": true},
+        "hotrank_stocks":  {"enabled": true},
+        "stock_supplement": {"enabled": true, "max_sectors": 5, "max_items": 15}
+      }
+    },
+    "semantic_judgment": {
+      "enabled": true,
+      "nodes": {
+        "review":     {"enabled": true, "min_star_rating": 3, "max_items": 8},
+        "stock_auth": {"enabled": true, "max_sectors": 5},
+        "conclusion": {"enabled": true}
+      }
+    }
+  },
+  "cost_control": {
+    "max_llm_calls_per_run": 40,
+    "warn_on_exceed": true
+  }
+}
