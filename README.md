@@ -14,8 +14,29 @@ pip install -r requirements.txt
 cp .env.example .env
 # 编辑 .env，填写 XUEQIU_COOKIE 和 LLM API Key
 
-# 3. 运行
-python run.py "启动早盘扫描"
+# 3. 验证环境
+python cli.py check
+
+# 4. 运行
+python cli.py run
+```
+
+---
+
+## 两种入口方式
+
+| 入口 | 文件 | 适合场景 | 示例 |
+|------|------|---------|------|
+| CLI | `cli.py` | 终端 / 脚本 / cron 定时 | `python cli.py run` |
+| Skill | `run.py` | Claude Code 对话触发 | 说"启动早盘扫描" |
+
+两者均通过相同的环境门禁，最终调用同一个执行流程。
+
+```bash
+# CLI 命令
+python cli.py run      # 执行完整扫描
+python cli.py check    # 检查 .env 配置是否就绪
+python cli.py doctor   # 完整诊断（Python 版本 + 依赖包 + 配置）
 ```
 
 ---

@@ -93,6 +93,21 @@ AGENT_LAYER_ENABLED=true
 
 ## 如何触发使用
 
+### 方式一：命令行（推荐新手）
+
+```bash
+# 先检查环境是否就绪
+python cli.py check
+
+# 执行扫描
+python cli.py run
+
+# 完整诊断（Python 版本 + 依赖包 + 配置）
+python cli.py doctor
+```
+
+### 方式二：Claude Code Skill（对话触发）
+
 在 Claude Code 对话框中输入任意一句触发词：
 
 ```
@@ -101,7 +116,7 @@ AGENT_LAYER_ENABLED=true
 扫描市场
 ```
 
-Claude Code 会自动调用 skill，运行完成后在 `reports/` 目录生成当日报告：
+两种方式均会在 `reports/` 目录生成当日报告：
 
 - `reports/YYYY-MM-DD-morning-scan.md` — 完整报告
 - `reports/YYYY-MM-DD-morning-scan-brief.md` — 简报
