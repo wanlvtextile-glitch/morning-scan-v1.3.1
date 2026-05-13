@@ -1,15 +1,53 @@
 # 用户密钥，绝不提交
 .env
 
-# 运行时产物（每次 run.py 自动生成）
+# 运行时产物（每次运行自动生成）
 raw_news.json
 analysis_result.json
 *-scan_result.json
 reports/*.md
 !reports/.gitkeep
+runs/
+
+# ZSXQ 缓存响应（含用户数据，不入库）
+data/zsxq_topics_response.json
+data/zsxq_sticky_response.json
+data/zsxq_topics_pages/
 
 # Python 缓存
 __pycache__/
 *.pyc
 *.pyo
 .pytest_cache/
+
+# Claude Code 工作文件（开发工具，非项目交付物）
+CLAUDE.md
+.claude/
+.agents/
+docs/agents/
+agent.md
+agents.md
+context.md
+handoff.md
+todo.md
+
+# mattpocock/skills 本地安装
+skills/
+skills-bundle/
+skills-lock.json
+
+# 会话策划文档（临时分析用，不属于版本历史）
+DAY_END_*.md
+*PROPOSAL*.md
+*HANDOFF*.md
+*AUDIT*.md
+*MAINTENANCE*.md
+ZSXQ_AUTOMATION.md
+REPORT_DATA_CHAIN_*.md
+PREPROCESSOR_*.md
+
+# 独立子项目（非本仓库内容）
+ZsxqCrawler/
+
+# IDE 工作区文件
+*.code-workspace

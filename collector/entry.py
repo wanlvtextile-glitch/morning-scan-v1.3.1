@@ -22,15 +22,14 @@ def _load_env():
                 os.environ.setdefault(k.strip(), v.strip())
 
 
-def collect(output_path: str = 'raw_news.json', websearch_data: list = None):
+def collect(websearch_data: list = None):
     """
-    执行早盘采集，输出 raw_news.json。
-    output_path    可由调用方指定，默认写入运行目录。
+    执行早盘采集，返回 CollectorOutput。
     websearch_data 可选，由 Claude 执行 WebSearch 后传入，作为补充源注入输出。
-    返回 CollectorOutput 对象。
+    文件写入由调用方（pipeline.py）负责。
     """
     _load_env()
 
     # 延迟导入：确保 .env 已加载后再触发模块级的环境变量读取（如 XUEQIU_COOKIE）
     from collector.orchestrator import run_collection
-    return run_collection(output_path, websearch_data=websearch_data)
+    return run_collection(websearch_data=websearch_data)

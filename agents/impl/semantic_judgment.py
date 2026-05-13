@@ -74,10 +74,19 @@ class SemanticJudgmentAgent(BaseAgent, ScanAgentInterface):
         prompt    = self._load_prompt('review.txt')
         max_items = self._config.node_cfg('semantic_judgment', 'review').get('max_items', 8)
 
-        items = state.get_sector_items(
+        logic_units = state.get_sector_logic_units(
             task['sector_name'],
             max_n=max_items,
-            fields=['title', 'content_preview', 'source', 'is_recap'],
+            fields=[
+                'unit_key',
+                'unit_type',
+                'title',
+                'summary',
+                'dominant_signal',
+                'signal_confidence',
+                'related_symbols_or_sectors',
+                'stock_branches',
+            ],
         )
         ctx = {
             'sector_name':               task['sector_name'],
@@ -85,7 +94,7 @@ class SemanticJudgmentAgent(BaseAgent, ScanAgentInterface):
             'python_group':              task.get('python_group', ''),
             'python_continuation_score': task.get('python_continuation_score', ''),
             'stage_signals':             task.get('stage_signals', []),
-            'top_items':                 items,
+            'logic_units':               logic_units,
         }
         messages = [
             {'role': 'system', 'content': prompt},
@@ -150,6 +159,11 @@ class SemanticJudgmentAgent(BaseAgent, ScanAgentInterface):
                 'star_rating':        s.get('star_rating'),
                 'continuation_score': s.get('continuation_score'),
                 'fermentation_score': s.get('fermentation_score'),
+                'logic_unit_count':   s.get('logic_unit_count', 0),
+                'event_cluster_count': s.get('event_cluster_count', 0),
+                'theme_cluster_count': s.get('theme_cluster_count', 0),
+                'dominant_signals_dist': s.get('dominant_signals_dist', {}),
+                'core_logic_units':   s.get('core_logic_units', [])[:3],
             }
             for s in editorial.get('all_sectors', [])
             if s.get('star_rating', 0) >= 3
@@ -171,6 +185,7 @@ class SemanticJudgmentAgent(BaseAgent, ScanAgentInterface):
         ctx  = {
             'scan_date':       state.meta.get('scan_date', ''),
             'top_sectors':     top_sectors,
+            'preprocess_signal_stats': state.get_preprocess_signal_stats(),
             'market_brief':    {'a_indices': a_brief, 'us_brief': us_brief},
             'primary_lines':   recs.get('primary_lines', []),
             'candidate_lines': recs.get('candidate_lines', []),

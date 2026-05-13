@@ -21,12 +21,12 @@ def normalize_title(text: str) -> str:
 
 def make_content_preview(title: str, content: str, max_len: int = 80) -> str:
     """
-    生成 content 的去冗余预览，用于下游传给 Claude 的 top_items。
+    生成 content 的去冗余预览，用于下游逻辑摘要和说明文本。
     规则：
       1. content 为空或清理后不足10字符 → 返回空串
-      2. content 与 title 词汇重叠比 > 60%（标题复述/subinfo类） → 返回空串
+      2. content 与 title 词汇重叠比 > 60% → 返回空串
       3. 否则 → 返回 strip_html(content)[:max_len]
-    保留第一句话（通常含关键数字、实体、催化剂），过滤纯重复的低价值内容。
+    目标是保留首段高信息密度内容，过滤纯重复低价值文本。
     """
     if not content:
         return ''
@@ -67,6 +67,33 @@ def deduplicate(items: list) -> tuple:
             seen[norm] = True
             result.append(item)
     return result, len(items) - len(result)
+
+
+def deduplicate_with_trace(items: list) -> tuple:
+    """
+    带轨迹的基础去重。
+    返回 (去重后列表, 被移除数量, removed_items)。
+    removed_items 中保留被判为 exact duplicate 的原始条目及原因。
+    """
+    seen_norm_titles: dict = {}
+    seen_urls: set[str] = set()
+    result = []
+    removed_items = []
+    for item in items:
+        norm = normalize_title(item.get('title', ''))
+        url = (item.get('url', '') or '').strip()
+        if url and url in seen_urls:
+            removed_items.append({**item, '_dedup_reason': 'url_exact_match'})
+            continue
+        if norm and norm in seen_norm_titles:
+            removed_items.append({**item, '_dedup_reason': 'normalized_title_exact_match'})
+            continue
+        if url:
+            seen_urls.add(url)
+        if norm:
+            seen_norm_titles[norm] = True
+        result.append(item)
+    return result, len(items) - len(result), removed_items
 
 
 # ── 复盘检测规则 ──────────────────────────────────────

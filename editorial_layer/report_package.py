@@ -14,6 +14,8 @@
 # 被谁调用：output_layer/entry.py (build_report_from_editorial)
 
 from datetime import datetime
+from editorial_layer.logic_summary import attach_logic_summary
+from editorial_layer.stock_merger import is_valid_candidate_name
 from output_layer.rules import GROUP_ORDER, GROUP_排除项
 
 VERSION = '1.2'
@@ -48,6 +50,21 @@ def _build_stock_pool(stock_pool_by_sector: dict) -> list:
         for c in candidates:
             pool.append({**c, 'sector': sector_name})
     return pool
+
+
+def _display_candidates(candidates: list) -> list:
+    return [
+        candidate
+        for candidate in (candidates or [])
+        if is_valid_candidate_name(candidate.get('name', ''), candidate.get('code', ''))
+    ]
+
+
+def _prepare_sector_for_display(sector: dict) -> dict:
+    return attach_logic_summary({
+        **sector,
+        'stock_candidates': _display_candidates(sector.get('stock_candidates', [])),
+    })
 
 
 def _build_groups(all_sectors: list) -> dict:
@@ -86,7 +103,8 @@ def build_report_package(editorial_result: dict) -> dict:
     """
     date        = editorial_result.get('date', datetime.now().strftime('%Y-%m-%d'))
     confidence  = editorial_result.get('confidence', 'unknown')
-    all_sectors = editorial_result.get('all_sectors', [])
+    all_sectors = [_prepare_sector_for_display(s) for s in editorial_result.get('all_sectors', [])]
+    top_sectors = [_prepare_sector_for_display(s) for s in editorial_result.get('top_sectors', [])]
 
     return {
         'meta': {
@@ -100,7 +118,7 @@ def build_report_package(editorial_result: dict) -> dict:
         'sector_intelligence': all_sectors,
         'stock_pool':         _build_stock_pool(editorial_result.get('stock_pool_by_sector', {})),
         'report_views': {
-            'top_sectors':           editorial_result.get('top_sectors', []),
+            'top_sectors':           top_sectors,
             'hidden_signals':        editorial_result.get('hidden_signals', []),
             'final_recommendations': editorial_result.get('final_recommendations', {}),
             'groups':                _build_groups(all_sectors),

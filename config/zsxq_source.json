@@ -1,0 +1,14 @@
+{
+  "enabled": true,
+  "group_id": "28885112854841",
+  "topics_count": 20,
+  "sticky_count": 3,
+  "scope": "all",
+  "max_pages": 20,
+  "timestamp_offset_ms": 1,
+  "request_delay_seconds": 0.5,
+  "curl_env": "ZSXQ_TOPICS_CURL",
+  "topics_response_file": "data/zsxq_topics_response.json",
+  "topics_response_dir": "data/zsxq_topics_pages",
+  "sticky_response_file": "data/zsxq_sticky_response.json"
+}

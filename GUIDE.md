@@ -1,136 +1,111 @@
-# 使用说明 — 早盘热点扫描
+# 使用说明
 
----
+## 这是什么
 
-## 这个 skill 是什么
+这是一个运行在 Claude Code 中的早盘扫描工具。触发后会自动完成：
 
-早盘热点扫描是一个运行在 Claude Code 中的自动化工具。每个交易日开盘前，你说一句触发词，它会自动完成以下工作：
+1. 采集五路主源资讯
+2. 识别热点板块
+3. 评估板块热度、阶段、持续性和发酵概率
+4. 生成候选个股与正宗度判断
+5. 输出主报告、简报和结构化结果
 
-1. 从淘股吧、同花顺、雪球同时采集隔夜资讯
-2. 识别当日热点板块（半导体、AI算力、机器人、新能源等 9 个方向）
-3. 评估每个板块的热度、发展阶段、持续性
-4. 筛选核心个股，判断正宗度（核心股 / 边缘受益 / 蹭概念）
-5. 输出结构化早盘报告到 `reports/` 目录
-
----
-
-## 环境要求
-
-| 项目 | 要求 |
-|------|------|
-| Python | 3.8 及以上 |
-| Claude Code | 已安装并登录 |
-| 网络 | 可访问淘股吧、同花顺、雪球 |
-| LLM API | 任选一个服务商（见下方配置项） |
-
----
-
-## 安装步骤
-
-**第一步：安装 Python 依赖**
+## 安装
 
 ```bash
 pip install -r requirements.txt
-```
-
-**第二步：创建配置文件**
-
-```bash
 cp .env.example .env
 ```
 
-用文本编辑器打开 `.env`，填写必要配置（见下方）。
+然后填写 `.env`：
 
-**第三步：验证安装**
+- `XUEQIU_COOKIE`
+- `AGENT_LAYER_ENABLED=true`
+- `LLM_PROVIDER`
+- `LLM_MODEL`
+- 对应的 API Key / Base URL
 
-```bash
-python -c "from collector.entry import collect; print('OK')"
-python -c "from agents import run_agents; print('OK')"
-```
-
-两行均输出 `OK` 即安装成功。
-
----
-
-## 必填配置项
-
-打开 `.env` 文件，填写以下内容：
-
-### 1. 雪球 Cookie（必填）
-
-```
-XUEQIU_COOKIE=<你的 Cookie>
-```
-
-获取方式：
-1. 浏览器登录 xueqiu.com
-2. 按 F12 打开开发者工具 → Network 标签
-3. 随意点击页面，找到任意一条 `xueqiu.com` 请求
-4. 在 Request Headers 中找到 `Cookie` 字段，复制完整内容粘贴进来
-
-> Cookie 有效期约 30 天，过期后重新获取。
-
-### 2. LLM 服务商（必填，选其中一种）
-
-在 `.env` 中取消对应选项的注释，填入 API Key：
-
-| 服务商 | 注册地址 |
-|--------|---------|
-| DeepSeek | platform.deepseek.com |
-| 智谱 AI | open.bigmodel.cn |
-| Anthropic Claude | console.anthropic.com |
-| 小米 / MiniMax / 月之暗面等 | 各服务商官网 |
-
-填好后将 `AGENT_LAYER_ENABLED` 改为 `true`：
-
-```
-AGENT_LAYER_ENABLED=true
-```
-
-> 如果暂时没有 API Key，保持 `AGENT_LAYER_ENABLED=false` 也可运行，报告会缺少个股正宗度和综合结论部分。
-
----
-
-## 如何触发使用
-
-### 方式一：命令行（推荐新手）
+## 验证
 
 ```bash
-# 先检查环境是否就绪
 python cli.py check
-
-# 执行扫描
-python cli.py run
-
-# 完整诊断（Python 版本 + 依赖包 + 配置）
 python cli.py doctor
+python -m unittest discover -s tests
 ```
 
-### 方式二：Claude Code Skill（对话触发）
+## 运行
 
-在 Claude Code 对话框中输入任意一句触发词：
+命令行：
 
+```bash
+python cli.py run
 ```
+
+Claude Code 对话触发词：
+
+```text
 启动早盘扫描
 早盘热点
 扫描市场
 ```
 
-两种方式均会在 `reports/` 目录生成当日报告：
+## 当前数据源
 
-- `reports/YYYY-MM-DD-morning-scan.md` — 完整报告
-- `reports/YYYY-MM-DD-morning-scan-brief.md` — 简报
+- 淘股吧
+- 同花顺早报
+- 同花顺人气榜
+- 雪球
+- ZSXQ
 
----
+## 输出
 
-## 常见失败原因
+每次运行都会写入：
 
-| 现象 | 原因 | 解决方法 |
-|------|------|---------|
-| 雪球数据为 0 条，提示 `cookie_expired` | 雪球 Cookie 已过期 | 重新从浏览器获取 Cookie 填入 `.env` |
-| 雪球数据为 0 条，提示 `no_cookie` | `.env` 中未填 Cookie | 填写 `XUEQIU_COOKIE` |
-| Agent 层跳过，报告缺少个股分析 | `AGENT_LAYER_ENABLED=false` 或 API Key 未填 | 检查 `.env` 中的 LLM 配置 |
-| Agent 调用失败，提示余额不足 | LLM 服务商账户余额为零 | 充值后重试 |
-| 美股数据拉取失败（ProxyError） | akshare 美股接口需直连，代理环境下可能失败 | 不影响主流程，A 股报告正常输出 |
-| `stocks_dict.csv` 找不到 | 文件被移动或删除 | 确认该文件与 `run.py` 在同一目录 |
-| 采集置信度为 `low` 或 `none` | 多个数据源采集失败 | 检查网络，稍后重试；报告仍会生成但准确性下降 |
+```text
+runs/<timestamp>/
+```
+
+包含：
+
+- `raw_news.json`
+- `analysis_result.json`
+- `YYYY-MM-DD-scan_result.json`
+- `reports/YYYY-MM-DD-morning-scan.md`
+- `reports/YYYY-MM-DD-morning-scan-brief.md`
+
+## 当前运行规则
+
+- 启动前必须通过环境校验。
+- Agent 层未就绪时，流程直接中止，不再静默降级。
+- 分析层必须显式消费采集结果，不允许再从 `raw_news.json` 兜底补数。
+- 人气榜识别以 `source_type='hotrank'` 为准，不依赖 `source` 文案硬编码。
+
+## 报告规则
+
+- `hotrank_signals` 是分析层全量人气信号。
+- `hidden_signals` 是报告层承接的 `hotrank_only` 子集。
+- 最终报告保留 `人气榜隐藏信号`，不再保留独立 `人气先行信号` 分组。
+- `stock_candidates` 必须是有效股票实体，不能是标题片段、机构名或盘面句子。
+- 不同板块不能因为中间结果复用而出现大面积相同数据。
+- `logic_summary` 优先使用清洗后的摘要，而不是原始噪声标题。
+
+股票识别补充规则：
+
+- 名称先过实体过滤，再映射股票代码。
+- 机构名、研报标签、句子型片段不会进入最终个股表。
+- 合法单股分支即使样本少也应保留。
+- 名称无法稳定映射到股票字典时，直接丢弃，不保留伪候选。
+
+## 常见问题
+
+**雪球 0 条或 Cookie 过期**
+
+更新 `XUEQIU_COOKIE`。
+
+**Agent 层失败**
+
+优先检查 `.env` 中的 LLM 配置；当前不会自动降级继续跑。
+
+**美股 ProxyError**
+
+通常是外部网络或代理问题，不影响 A 股报告主链路。

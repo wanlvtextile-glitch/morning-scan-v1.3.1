@@ -10,3 +10,15 @@ def get_processed_items(result: dict) -> list:
 
 def get_stats(result: dict) -> dict:
     return result['stats']
+
+
+def get_logic_units(result: dict) -> list:
+    return result.get('logic_units', [])
+
+
+def get_signal_stats(result: dict) -> dict:
+    return result.get('signal_stats', {})
+
+
+def get_dedup_decisions(result: dict) -> list:
+    return result.get('dedup_decisions', [])

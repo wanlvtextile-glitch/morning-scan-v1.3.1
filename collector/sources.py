@@ -17,6 +17,13 @@ import requests as _requests
 
 from collector.models import NewsItem, SourceResult
 from collector.http_client import HEADERS, SOURCE_BUDGET, REQUEST_TIMEOUT, fetch_with_retry
+from collector.time_window import CHINA_TZ
+
+
+def _normalize_to_china_tz(dt: datetime) -> datetime:
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=CHINA_TZ)
+    return dt.astimezone(CHINA_TZ)
 
 
 # ── 淘股吧 ────────────────────────────────────────────────────────────────────
@@ -76,7 +83,7 @@ def scrape_taoguba(start: datetime, end: datetime) -> SourceResult:
             ts_ms = post.get('dateTime', 0)
             if not ts_ms:
                 continue
-            pub = datetime.fromtimestamp(ts_ms / 1000)
+            pub = datetime.fromtimestamp(ts_ms / 1000, tz=CHINA_TZ)
             if pub >= start:
                 page_all_old = False  # 本页有不早于 start 的帖子
             if pub < start or pub > end:
@@ -108,6 +115,52 @@ def scrape_taoguba(start: datetime, end: datetime) -> SourceResult:
 THS_NEWS_JS_URL = 'http://stock.10jqka.com.cn/thsgd/realtimenews.js'
 
 
+def _extract_js_array(text: str, markers: tuple[str, ...]) -> str:
+    """Extract a JSON array from JS text without being confused by brackets inside strings."""
+    idx = -1
+    for marker in markers:
+        idx = text.find(marker)
+        if idx != -1:
+            break
+    if idx == -1:
+        raise ValueError('marker_not_found')
+
+    arr_start = text.index('[', idx)
+    depth = 0
+    in_string = False
+    escape = False
+    quote_char = ''
+
+    for pos in range(arr_start, len(text)):
+        ch = text[pos]
+
+        if in_string:
+            if escape:
+                escape = False
+                continue
+            if ch == '\\':
+                escape = True
+                continue
+            if ch == quote_char:
+                in_string = False
+            continue
+
+        if ch in ('"', "'"):
+            in_string = True
+            quote_char = ch
+            continue
+
+        if ch == '[':
+            depth += 1
+            continue
+        if ch == ']':
+            depth -= 1
+            if depth == 0:
+                return text[arr_start:pos + 1]
+
+    raise ValueError('array_not_closed')
+
+
 def scrape_ths_news(start: datetime, end: datetime) -> SourceResult:
     """抓取同花顺早报，解析 JS 文件中的 item 数组"""
     budget_start = _time.time()
@@ -126,26 +179,8 @@ def scrape_ths_news(start: datetime, end: datetime) -> SourceResult:
     resp.encoding = 'gbk'
     text = resp.text.strip()
 
-    # JS 外层键可能无引号（非标准 JSON），直接定位 item 数组起始位置
-    idx = text.find('"item":')
-    if idx == -1:
-        idx = text.find('item:')
-    if idx == -1:
-        return SourceResult('同花顺早报', True, False, [],
-                            error_type='parse_failed')
-
     try:
-        arr_start = text.index('[', idx)
-        depth, arr_end = 0, arr_start
-        for i, ch in enumerate(text[arr_start:], arr_start):
-            if ch == '[':
-                depth += 1
-            elif ch == ']':
-                depth -= 1
-                if depth == 0:
-                    arr_end = i
-                    break
-        entries = _json.loads(text[arr_start:arr_end + 1])
+        entries = _json.loads(_extract_js_array(text, ('"item":', 'item:')))
     except Exception:
         return SourceResult('同花顺早报', True, False, [],
                             error_type='parse_failed')
@@ -154,7 +189,7 @@ def scrape_ths_news(start: datetime, end: datetime) -> SourceResult:
     items = []
     for entry in entries:
         try:
-            pub = dp.parse(entry.get('pubDate', ''))
+            pub = _normalize_to_china_tz(dp.parse(entry.get('pubDate', '')))
         except Exception:
             continue
         if not (start <= pub <= end):
@@ -312,7 +347,7 @@ def scrape_xueqiu(start: datetime, end: datetime) -> SourceResult:
             ts_ms = raw_data.get('created_at', 0)
             if not ts_ms:
                 continue
-            pub = datetime.fromtimestamp(ts_ms / 1000)
+            pub = datetime.fromtimestamp(ts_ms / 1000, tz=CHINA_TZ)
 
             if pub > end:
                 continue  # 时间倒序，窗口结束后的帖子跳过（继续往下找）

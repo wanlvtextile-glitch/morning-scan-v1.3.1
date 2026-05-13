@@ -1,24 +1,17 @@
-# checks.py — 共享环境校验层
-#
-# 供 pipeline.py（启动门禁）和 cli.py（诊断展示）共同调用。
-# 不依赖任何第三方库，只用标准库。
-
 import importlib
+import json
 import os
 import sys
+from typing import List, Set
 
-# ── .env 加载 ─────────────────────────────────────────────
 
 def load_env(root_dir: str = None) -> bool:
-    """
-    从项目根目录加载 .env（不覆盖已有系统变量）。
-    返回 True 表示文件存在并已加载，False 表示文件不存在。
-    """
     if root_dir is None:
         root_dir = os.path.dirname(os.path.abspath(__file__))
     env_path = os.path.join(root_dir, '.env')
     if not os.path.exists(env_path):
         return False
+
     with open(env_path, encoding='utf-8') as f:
         for line in f:
             line = line.strip()
@@ -28,131 +21,160 @@ def load_env(root_dir: str = None) -> bool:
     return True
 
 
-# ── 环境校验 ──────────────────────────────────────────────
+def _load_enabled_source_keys(root_dir: str) -> Set[str]:
+    config_path = os.path.join(root_dir, 'config', 'source_registry.json')
+    default_keys = {'taoguba', 'ths_news', 'ths_hotrank', 'xueqiu'}
+    if not os.path.exists(config_path):
+        return default_keys
+
+    try:
+        with open(config_path, encoding='utf-8') as f:
+            data = json.load(f)
+    except Exception:
+        return default_keys
+
+    enabled = set()
+    for item in data.get('sources', []):
+        if isinstance(item, dict) and item.get('enabled', True):
+            key = str(item.get('key', '')).strip()
+            if key:
+                enabled.add(key)
+    return enabled or default_keys
+
+
+def _missing_env(names: List[str]) -> List[str]:
+    return [name for name in names if not os.environ.get(name, '').strip()]
+
 
 def check_env() -> dict:
-    """
-    校验运行所需的全部环境配置，返回结构化结果。
-    调用前会自动加载 .env。
-
-    返回格式：
-    {
-        'env_file':    {'ok': bool, 'path': str},
-        'cookie':      {'ok': bool, 'hint': str},
-        'agent':       {'enabled': bool},
-        'llm':         {'ok': bool, 'provider': str, 'hint': str},
-        'errors':      [str, ...],   # 阻断性错误
-        'warnings':    [str, ...],   # 非阻断性提示
-        'ready':       bool,         # False 表示无法运行
-    }
-    """
     root = os.path.dirname(os.path.abspath(__file__))
     env_path = os.path.join(root, '.env')
+    enabled_sources = _load_enabled_source_keys(root)
 
     result = {
-        'env_file':  {'ok': False, 'path': env_path},
-        'cookie':    {'ok': False, 'hint': ''},
-        'agent':     {'enabled': False},
-        'llm':       {'ok': True, 'provider': '', 'hint': ''},
-        'errors':    [],
-        'warnings':  [],
-        'ready':     False,
+        'env_file': {'ok': False, 'path': env_path},
+        'cookie': {'ok': False, 'hint': ''},
+        'agent': {'enabled': False},
+        'llm': {'ok': True, 'provider': '', 'hint': ''},
+        'errors': [],
+        'warnings': [],
+        'ready': False,
     }
 
-    # ① .env 文件
     if not os.path.exists(env_path):
         result['errors'].append(
-            '.env 配置文件不存在\n'
-            '  修复：cp .env.example .env  （然后填写必要项）'
+            '.env 不存在。\n'
+            '  请先复制 .env.example 为 .env，再补齐必填环境变量。'
         )
         return result
+
     result['env_file']['ok'] = True
     load_env(root)
 
-    # ② 雪球 Cookie
-    cookie = os.environ.get('XUEQIU_COOKIE', '').strip()
-    if cookie:
-        result['cookie']['ok'] = True
-    else:
-        result['errors'].append(
-            'XUEQIU_COOKIE 未填写\n'
-            '  获取：浏览器登录 xueqiu.com → F12 → Network\n'
-            '        → 任意 xueqiu.com 请求 → Request Headers → 复制 Cookie\n'
-            '  填写：.env 文件第一行  XUEQIU_COOKIE=<粘贴>'
-        )
+    if 'xueqiu' in enabled_sources:
+        cookie = os.environ.get('XUEQIU_COOKIE', '').strip()
+        if cookie:
+            result['cookie']['ok'] = True
+        else:
+            result['errors'].append(
+                'XUEQIU_COOKIE 未填写。\n'
+                '  当前已启用雪球主源，必须在 .env 中补齐 XUEQIU_COOKIE。'
+            )
 
-    # ③ Agent 层 LLM 配置
+    if 'zsxq' in enabled_sources:
+        required_zsxq = [
+            'ZSXQ_AUTHORIZATION',
+            'ZSXQ_USER_AGENT',
+            'ZSXQ_X_VERSION',
+            'ZSXQ_X_SIGNATURE',
+            'ZSXQ_X_ADUID',
+        ]
+        missing = _missing_env(required_zsxq)
+        if missing:
+            result['errors'].append(
+                'ZSXQ 主源环境变量未填写完整。\n'
+                f'  缺失：{", ".join(missing)}\n'
+                '  当前 morning-scan 已将 ZSXQ 作为主源，未补齐前禁止继续执行。'
+            )
+
+    if 'twitter' in enabled_sources:
+        if not os.environ.get('APIFY_TOKEN', '').strip():
+            result['errors'].append(
+                'APIFY_TOKEN 未填写。\n'
+                '  当前已启用 Twitter 源，必须在 .env 中补齐 APIFY_TOKEN。'
+            )
+
     agent_enabled = os.environ.get('AGENT_LAYER_ENABLED', 'false').lower() == 'true'
     result['agent']['enabled'] = agent_enabled
 
-    if agent_enabled:
+    if not agent_enabled:
+        result['errors'].append(
+            'AGENT_LAYER_ENABLED=false。\n'
+            '  你的目标是由 LLM 参与生成最终 morning-scan 报告，'
+            '因此 Agent 层必须开启，未开启前不允许继续执行。'
+        )
+    else:
         provider = os.environ.get('LLM_PROVIDER', '').strip()
+        model = os.environ.get('LLM_MODEL', '').strip()
         result['llm']['provider'] = provider
 
         if not provider:
             result['errors'].append(
-                'AGENT_LAYER_ENABLED=true 但 LLM_PROVIDER 未填写\n'
-                '  修复：在 .env 中取消一个服务商方案的注释，并填入 API Key\n'
-                '  或者：将 AGENT_LAYER_ENABLED 改为 false（不使用 LLM 分析）'
+                'LLM_PROVIDER 未填写。\n'
+                '  请选择 anthropic 或 openai-compatible 服务。'
             )
             result['llm']['ok'] = False
-        elif provider == 'anthropic':
-            key = os.environ.get('ANTHROPIC_API_KEY', '').strip()
-            if not key:
+        if not model:
+            result['errors'].append(
+                'LLM_MODEL 未填写。\n'
+                '  开启 Agent 后必须明确指定最终用于出报告的模型。'
+            )
+            result['llm']['ok'] = False
+
+        if provider == 'anthropic':
+            missing = _missing_env(['ANTHROPIC_API_KEY'])
+            if missing:
                 result['errors'].append(
-                    'LLM_PROVIDER=anthropic 但 ANTHROPIC_API_KEY 未填写\n'
-                    '  获取：console.anthropic.com → API Keys（格式 sk-ant-api03-...）\n'
-                    '  或者：将 AGENT_LAYER_ENABLED 改为 false'
+                    'LLM_PROVIDER=anthropic 但 ANTHROPIC_API_KEY 未填写。'
                 )
                 result['llm']['ok'] = False
         elif provider == 'openai':
-            key      = os.environ.get('OPENAI_API_KEY', '').strip()
-            base_url = os.environ.get('OPENAI_BASE_URL', '').strip()
-            missing  = []
-            if not key:
-                missing.append('OPENAI_API_KEY')
-            if not base_url:
-                missing.append('OPENAI_BASE_URL')
+            missing = _missing_env(['OPENAI_API_KEY', 'OPENAI_BASE_URL'])
             if missing:
                 result['errors'].append(
-                    f'LLM_PROVIDER=openai 但 {" 和 ".join(missing)} 未填写\n'
-                    '  示例：OPENAI_BASE_URL=https://api.deepseek.com/v1\n'
-                    '  或者：将 AGENT_LAYER_ENABLED 改为 false'
+                    'LLM_PROVIDER=openai 但 OpenAI-compatible 配置未填写完整。\n'
+                    f'  缺失：{", ".join(missing)}'
                 )
                 result['llm']['ok'] = False
-        else:
+        elif provider:
             result['errors'].append(
-                f'LLM_PROVIDER="{provider}" 不支持，仅支持 anthropic 或 openai'
+                f'LLM_PROVIDER="{provider}" 不受支持，只允许 anthropic 或 openai。'
             )
             result['llm']['ok'] = False
-    else:
-        result['errors'].append(
-            'AGENT_LAYER_ENABLED=false：LLM API 未配置，无法生成完整报告\n'
-            '  修复：在 .env 中选择一个 LLM 服务商，填入 API Key，\n'
-            '        并将 AGENT_LAYER_ENABLED 改为 true\n'
-            '  参考：README.md → LLM API 配置章节，或运行 python cli.py run 进入配置向导'
-        )
 
     result['ready'] = len(result['errors']) == 0
     return result
 
 
 def check_packages() -> dict:
-    """
-    检查必要 Python 包是否已安装。
-    返回 {'ok': bool, 'missing': [str], 'installed': [str]}
-    """
     required = {
-        'requests':          'requests',
-        'bs4':               'beautifulsoup4',
-        'lxml':              'lxml',
-        'dateutil':          'python-dateutil',
-        'chinese_calendar':  'chinesecalendar',
-        'akshare':           'akshare',
-        'anthropic':         'anthropic',
-        'openai':            'openai',
+        'requests': 'requests',
+        'bs4': 'beautifulsoup4',
+        'lxml': 'lxml',
+        'dateutil': 'python-dateutil',
+        'chinese_calendar': 'chinesecalendar',
+        'akshare': 'akshare',
     }
-    missing   = []
+
+    root = os.path.dirname(os.path.abspath(__file__))
+    load_env(root)
+    provider = os.environ.get('LLM_PROVIDER', '').strip()
+    if provider == 'anthropic':
+        required['anthropic'] = 'anthropic'
+    elif provider == 'openai':
+        required['openai'] = 'openai'
+
+    missing = []
     installed = []
     for import_name, pip_name in required.items():
         try:
@@ -160,29 +182,24 @@ def check_packages() -> dict:
             installed.append(pip_name)
         except ImportError:
             missing.append(pip_name)
+
     return {
-        'ok':        len(missing) == 0,
-        'missing':   missing,
+        'ok': len(missing) == 0,
+        'missing': missing,
         'installed': installed,
     }
 
 
-# ── 门禁函数（供 pipeline 调用）─────────────────────────
-
 def assert_ready() -> None:
-    """
-    校验环境，若不满足则打印结构化错误提示并 sys.exit(1)。
-    供 pipeline.run_pipeline() 在执行前调用（兜底安全门禁）。
-    主要错误提示由 cli.cmd_run() 负责；此处作为二次保障。
-    """
     result = check_env()
     if result['ready']:
-        print('[配置检查] OK')
+        print('[环境检查] OK')
         return
-    print('\n[启动失败] 请先完成以下配置，再重新运行：\n')
+
+    print('\n[morning-scan 阻断] 环境变量未配置完整，停止执行。\n')
     for i, err in enumerate(result['errors'], 1):
         print(f'  {i}. {err}\n')
     print(f'  配置文件路径：{result["env_file"]["path"]}')
-    print(f'  配置模板参考：.env.example')
-    print(f'\n  配置完成后运行：python cli.py run\n')
+    print('  参考模板：.env.example')
+    print('\n  补齐后重新运行：python cli.py run\n')
     sys.exit(1)

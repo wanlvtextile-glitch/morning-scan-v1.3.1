@@ -3,7 +3,7 @@
 # 被谁调用：editorial_layer/entry.py
 
 from output_layer.rules import (
-    GROUP_已知强势主线, GROUP_次日发酵候选, GROUP_人气先行信号,
+    GROUP_已知强势主线, GROUP_次日发酵候选,
 )
 
 TOP_SECTORS_MAX = 5   # 主要关注板块上限

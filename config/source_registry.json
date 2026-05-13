@@ -1,0 +1,12 @@
+{
+  "sources": [
+    { "key": "taoguba", "enabled": true },
+    { "key": "ths_news", "enabled": true },
+    { "key": "ths_hotrank", "enabled": true },
+    { "key": "xueqiu", "enabled": true },
+    { "key": "twitter", "enabled": false },
+    { "key": "telegram", "enabled": false },
+    { "key": "zsxq", "enabled": true },
+    { "key": "websearch", "enabled": true }
+  ]
+}

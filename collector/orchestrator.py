@@ -1,36 +1,17 @@
-# 采集编排层
-# 统一调度四个数据源，收集结果，计算置信度，输出 raw_news.json。
-# 四源并行采集；GLOBAL_BUDGET 秒后强制放弃未完成的源。
-
-import json
-import threading
-import time as _time
-from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, wait
 from typing import List
 
-from collector.models import CollectorOutput, SourceResult, NewsItem
 from collector.http_client import GLOBAL_BUDGET
+from collector.models import CollectorOutput, NewsItem, SourceResult
+from collector.registry import RUNTIME_INJECTED, get_enabled_sources
 from collector.time_window import get_time_window
-from collector.sources import (
-    scrape_taoguba,
-    scrape_ths_news,
-    scrape_ths_hotrank,
-    scrape_xueqiu,
-    make_websearch_result,
-)
 
 
 def count_main_source_successes(results: List[SourceResult]) -> int:
-    """统计主源（is_main_source=True）中抓取成功的数量"""
     return sum(1 for r in results if r.is_main_source and r.fetch_success)
 
 
-def build_output(main_success_count: int,
-                 results: List[SourceResult]) -> CollectorOutput:
-    """
-    根据主源成功数量计算置信度，合并全部条目。
-    置信度规则：≥2 主源 → normal，1 主源 → low，0 主源 → none
-    """
+def build_output(main_success_count: int, results: List[SourceResult]) -> CollectorOutput:
     if main_success_count >= 2:
         confidence = 'normal'
     elif main_success_count == 1:
@@ -39,117 +20,85 @@ def build_output(main_success_count: int,
         confidence = 'none'
 
     all_items: List[NewsItem] = []
-    for r in results:
-        all_items.extend(r.items)
+    for result in results:
+        all_items.extend(result.items)
 
     return CollectorOutput(
-        confidence         = confidence,
-        main_success_count = main_success_count,
-        results            = results,
-        all_items          = all_items,
+        confidence=confidence,
+        main_success_count=main_success_count,
+        main_source_total=sum(1 for r in results if r.is_main_source),
+        results=results,
+        all_items=all_items,
     )
 
 
-def run_collection(output_path: str = 'raw_news.json',
-                   websearch_data: list = None) -> CollectorOutput:
-    """
-    执行完整采集流程并将结果写入 output_path。
-    websearch_data：可选，由外部（Claude）传入的 WebSearch 结果列表。
-                    传入时作为第5路补充源合并进输出，不影响置信度计算。
-    返回 CollectorOutput 供调用方检查。
-    """
-    start, end = get_time_window()
-    print(f'[采集] 时间窗口：{start.strftime("%Y-%m-%d %H:%M")} → {end.strftime("%Y-%m-%d %H:%M")}')
+def _collect_one_source(source_def, start, end):
+    print(f'[采集] {source_def.name} ...')
+    result = source_def.collect(start=start, end=end)
+    icon = '[OK]' if result.fetch_success else '[FAIL]'
+    print(
+        f'       {icon} {source_def.name}: '
+        f'fetch_success={result.fetch_success}, items={result.item_count}, error={result.error_type}'
+    )
+    return result
 
-    tasks = [
-        ('淘股吧',      lambda: scrape_taoguba(start, end)),
-        ('同花顺早报',   lambda: scrape_ths_news(start, end)),
-        ('同花顺人气榜', lambda: scrape_ths_hotrank()),
-        ('雪球',        lambda: scrape_xueqiu(start, end)),
-    ]
+
+def run_collection(websearch_data: list = None) -> CollectorOutput:
+    start, end = get_time_window()
+    print(f'[采集] 时间窗口：{start.strftime("%Y-%m-%d %H:%M")} -> {end.strftime("%Y-%m-%d %H:%M")}')
+
+    sources = get_enabled_sources()
+    threaded_sources = [s for s in sources if s.runtime_mode != RUNTIME_INJECTED]
+    injected_sources = [s for s in sources if s.runtime_mode == RUNTIME_INJECTED]
 
     results_map: dict = {}
-    lock = threading.Lock()
 
-    def _run(label, fn):
-        print(f'[采集] {label} ...')
-        r = fn()
-        icon = '[OK]' if r.fetch_success else '[FAIL]'
-        print(f'       {icon} {label}: fetch_success={r.fetch_success}, '
-              f'items={r.item_count}, error={r.error_type}')
-        with lock:
-            results_map[label] = r
+    with ThreadPoolExecutor(max_workers=max(1, len(threaded_sources))) as executor:
+        future_map = {
+            executor.submit(_collect_one_source, source_def, start, end): source_def
+            for source_def in threaded_sources
+        }
+        done, not_done = wait(future_map.keys(), timeout=GLOBAL_BUDGET)
 
-    # 四源并行启动
-    threads = [
-        (label, threading.Thread(target=_run, args=(label, fn), daemon=True))
-        for label, fn in tasks
-    ]
-    t0 = _time.time()
-    for _, t in threads:
-        t.start()
+        for future in done:
+            source_def = future_map[future]
+            try:
+                results_map[source_def.key] = future.result()
+            except Exception as exc:
+                print(f'[异常] {source_def.name} 运行失败：{exc}')
+                results_map[source_def.key] = SourceResult(
+                    name=source_def.name,
+                    is_main_source=source_def.is_main_source,
+                    fetch_success=False,
+                    items=[],
+                    error_type='runtime_exception',
+                    source_type=source_def.source_type,
+                )
 
-    # 等待各线程，超过 GLOBAL_BUDGET 后放弃未完成的源
-    for label, t in threads:
-        remaining = max(0.0, GLOBAL_BUDGET - (_time.time() - t0))
-        t.join(timeout=remaining)
-        if t.is_alive():
-            print(f'[警告] {label} 全流程超时，跳过')
+        for future in not_done:
+            source_def = future_map[future]
+            print(f'[预算] {source_def.name} 超出全局预算，标记为 budget_exceeded')
+            results_map[source_def.key] = source_def.build_budget_exceeded_result()
 
-    # 按原顺序收集结果；超时未完成的源生成失败占位
-    results = []
-    for label, _ in tasks:
-        if label in results_map:
-            results.append(results_map[label])
-        else:
-            results.append(SourceResult(label, True, False, [],
-                                        error_type='budget_exceeded'))
+        executor.shutdown(wait=False, cancel_futures=True)
 
-    # WebSearch 补充源：不参与超时控制，不计入主源置信度
-    if websearch_data is not None:
-        ws_result = make_websearch_result(websearch_data)
-        results.append(ws_result)
-        print(f'[采集] WebSearch 补充源注入，items={ws_result.item_count}')
+    results: List[SourceResult] = []
+    for source_def in threaded_sources:
+        results.append(results_map.get(source_def.key, source_def.build_budget_exceeded_result()))
+
+    for source_def in injected_sources:
+        if websearch_data is None:
+            continue
+        injected_result = source_def.collect(injected_items=websearch_data)
+        results.append(injected_result)
+        print(f'[采集] {source_def.name} 注入完成：items={injected_result.item_count}')
 
     output = build_output(count_main_source_successes(results), results)
     output.time_window_start = start.isoformat()
+    output.time_window_end = end.isoformat()
 
-    # 序列化写入 JSON
-    payload = {
-        'generated_at':       datetime.now().isoformat(),
-        'time_window_start':  start.isoformat(),
-        'time_window_end':    end.isoformat(),
-        'confidence':         output.confidence,
-        'main_success_count': output.main_success_count,
-        'sources': [
-            {
-                'name':          r.name,
-                'source_type':   r.source_type,
-                'is_main':       r.is_main_source,
-                'fetch_success': r.fetch_success,
-                'item_count':    r.item_count,
-                'error_type':    r.error_type,
-            }
-            for r in output.results
-        ],
-        'items': [
-            {
-                'title':        item.title,
-                'content':      item.content,
-                'source':       item.source,
-                'source_type':  item.source_type,
-                'url':          item.url,
-                'published_at': item.published_at,
-                'heat':         item.heat,
-            }
-            for item in output.all_items
-        ],
-    }
-
-    with open(output_path, 'w', encoding='utf-8') as f:
-        json.dump(payload, f, ensure_ascii=False, indent=2)
-
-    print(f'\n[完成] 主源成功：{output.main_success_count}/4  置信度：{output.confidence}')
-    print(f'[完成] {output_path} 已写入（{len(output.all_items)} 条原始数据）')
-
+    print(
+        f'\n[完成] 主源成功：{output.main_success_count}/{output.main_source_total} 置信度：{output.confidence}'
+    )
+    print(f'[完成] 采集 {len(output.all_items)} 条内容')
     return output

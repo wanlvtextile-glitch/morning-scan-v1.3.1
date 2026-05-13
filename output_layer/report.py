@@ -7,7 +7,7 @@
 from datetime import datetime
 from output_layer.rules import (
     GROUP_已知强势主线, GROUP_次日发酵候选,
-    GROUP_人气先行信号, GROUP_排除项, GROUP_ORDER,
+    GROUP_排除项, GROUP_ORDER,
 )
 
 
@@ -15,6 +15,19 @@ from output_layer.rules import (
 
 def _stars(n: int) -> str:
     return '⭐' * max(1, min(n, 5))
+
+
+def _render_logic_summary_lines(sector: dict, max_lines: int = 3) -> list:
+    summary_lines = sector.get('logic_summary_lines', []) or []
+    if summary_lines:
+        lines = [f'- **逻辑解释**：{summary_lines[0]}']
+        lines.extend(f'- {line}' for line in summary_lines[1:max_lines])
+        return lines
+
+    short = sector.get('logic_summary_short', '')
+    if short:
+        return [f'- **逻辑解释**：{short}']
+    return []
 
 
 # ── 单板块渲染（按栏目有差异）───────────────────────────
@@ -59,20 +72,6 @@ def _render_sector_发酵(s: dict) -> str:
     return '\n'.join(lines)
 
 
-def _render_sector_人气(s: dict) -> str:
-    """人气先行信号：说明信号来源 + 当前证据不足"""
-    lines = [f'### {s["name"]}']
-    hotrank = s.get('hotrank')
-    hr_str  = f'人气榜 #{hotrank["rank"]} {hotrank.get("change_pct", "")}' if hotrank else '人气信号'
-    lines.append(f'- **信号来源**：{hr_str}  **热度**：{_stars(s.get("star_rating", 1))}')
-    lines.append(f'- **新闻覆盖**：有效 {s.get("effective_count", 0):.1f} 条，尚未形成共振')
-    triggers = s.get('trigger_points', [])
-    if triggers:
-        lines.append(f'- **若开盘确认**：{"；".join(triggers[:2])}')
-    lines.append(f'- **建议**：观察为主，等待新闻跟进后再判断')
-    return '\n'.join(lines)
-
-
 def _render_sector_排除(s: dict) -> str:
     """排除项：简明说明排除原因"""
     lines = [f'### {s["name"]}']
@@ -86,7 +85,6 @@ def _render_sector_排除(s: dict) -> str:
 _SECTOR_RENDERER = {
     GROUP_已知强势主线: _render_sector_主线,
     GROUP_次日发酵候选: _render_sector_发酵,
-    GROUP_人气先行信号: _render_sector_人气,
     GROUP_排除项:      _render_sector_排除,
 }
 
@@ -96,14 +94,12 @@ _SECTOR_RENDERER = {
 _GROUP_HEADING = {
     GROUP_已知强势主线: '## 一、已知强势主线',
     GROUP_次日发酵候选: '## 二、次日发酵候选',
-    GROUP_人气先行信号: '## 三、人气先行信号（待确认）',
-    GROUP_排除项:      '## 四、排除项',
+    GROUP_排除项:      '## 三、排除项',
 }
 
 _GROUP_INTRO = {
     GROUP_已知强势主线: '前一日已有明确兑现或多源共振，今日关注能否继续加强。',
     GROUP_次日发酵候选: '信号初现或人气先行，今日有望从弱共识走向强共识，关注触发条件。',
-    GROUP_人气先行信号: '人气榜出现但新闻量极少，尚未形成有效共振，仅作观察。',
     GROUP_排除项:      '前一日已高潮且续弱，或复盘帖主导无新增催化，今日不作重点。',
 }
 
@@ -214,16 +210,19 @@ def _render_source_snapshot(pkg: dict) -> str:
     lines.append('|------|------|--------|')
 
     main_ok = 0
+    main_total = 0
     for s in snapshot:
         status = s.get('status', '❌')
-        if s.get('is_main') and status in ('✅', '⚠️'):
-            main_ok += 1
+        if s.get('is_main'):
+            main_total += 1
+            if status in ('✅', '⚠️'):
+                main_ok += 1
         lines.append(f'| {s["name"]} | {status} | {s.get("item_count", 0)} 条 |')
 
     lines.append('')
     conf_map = {'normal': '正常', 'low': '低', 'none': '无数据', 'unknown': '未知'}
     conf_str = conf_map.get(ctx.get('confidence', 'unknown'), '未知')
-    lines.append(f'主源成功（✅+⚠️）：{main_ok}/4　置信度：{conf_str}')
+    lines.append(f'主源成功（✅+⚠️）：{main_ok}/{main_total or 0}　置信度：{conf_str}')
 
     if dedup:
         orig = dedup.get('original_news', 0)
@@ -296,17 +295,16 @@ def _render_stock_candidates_table(candidates: list) -> str:
         return '_（本次扫描未识别到个股候选）_'
 
     lines = []
-    lines.append('| 代码 | 名称 | 提及数 | 驱动 | 正宗度 | 正宗度依据 | 核心理由 |')
-    lines.append('|------|------|--------|------|--------|-----------|---------|')
+    lines.append('| 名称 | 提及数 | 驱动 | 正宗度 | 正宗度依据 | 核心理由 |')
+    lines.append('|------|--------|------|--------|-----------|---------|')
     for c in candidates:
-        code     = c.get('code') or '—'
         name     = c.get('name', '')
         cnt      = c.get('mention_count', 0)
         driver   = c.get('driver_display', '人气讨论')
         auth     = c.get('authenticity') or '—'
         evidence = c.get('authenticity_evidence') or '—'
         reason   = c.get('core_reason') or '—'
-        lines.append(f'| {code} | {name} | {cnt} | {driver} | {auth} | {evidence} | {reason} |')
+        lines.append(f'| {name} | {cnt} | {driver} | {auth} | {evidence} | {reason} |')
     return '\n'.join(lines)
 
 
@@ -391,7 +389,6 @@ def _render_conclusion(pkg: dict) -> str:
     rec     = pkg.get('report_views', {}).get('final_recommendations', {})
     primary = rec.get('primary_lines', [])
     cands   = rec.get('candidate_lines', [])
-    watch   = rec.get('watch_list', [])
     text    = rec.get('conclusion_text')
 
     lines = ['## 扫描结论', '']
@@ -402,8 +399,6 @@ def _render_conclusion(pkg: dict) -> str:
         lines.append(f'**今日主盯**：{"、".join(primary)}')
     if cands:
         lines.append(f'**发酵观察**：{"、".join(cands)}')
-    if watch:
-        lines.append(f'**人气等待**：{"、".join(watch)}')
     return '\n'.join(lines)
 
 
@@ -419,7 +414,12 @@ def _completeness_issues(pkg: dict) -> list:
     rec   = views.get('final_recommendations', {})
     if not rec.get('conclusion_text'):
         issues.append('扫描结论未生成')
+    from editorial_layer.stock_merger import is_valid_candidate_name
     for s in views.get('top_sectors', []):
+        invalids = [c.get('name', '') for c in s.get('stock_candidates', [])
+                 if not is_valid_candidate_name(c.get('name', ''), c.get('code', ''))]
+        if invalids:
+            issues.append(f'{s["name"]} 存在非法个股名称：{"、".join(invalids)}')
         nulls = [c.get('name', '') for c in s.get('stock_candidates', [])
                  if c.get('authenticity') is None]
         if nulls:
@@ -532,7 +532,7 @@ def build_markdown_from_package(pkg: dict) -> str:
 
 def build_brief_markdown(pkg: dict) -> str:
     """
-    简报摘要：一页快速预览，含核心方向表 + 人气先行 + 结论要点。
+    简报摘要：一页快速预览，含核心方向表 + 隐藏信号 + 结论要点。
     供 pipeline handoff 后快速预览使用。
     """
     meta    = pkg.get('meta', {})
@@ -562,9 +562,9 @@ def build_brief_markdown(pkg: dict) -> str:
 
     lines.append('')
 
-    # 人气先行
+    # 人气榜隐藏信号
     if hidden:
-        lines.append('## 人气先行（观察）')
+        lines.append('## 人气榜隐藏信号')
         lines.append('')
         lines.append('| 排名 | 板块 | 涨幅 |')
         lines.append('|------|------|------|')
@@ -580,7 +580,6 @@ def build_brief_markdown(pkg: dict) -> str:
     conclusion = rec.get('conclusion_text')
     primary    = rec.get('primary_lines', [])
     cands      = rec.get('candidate_lines', [])
-    watch      = rec.get('watch_list', [])
     if conclusion:
         lines.append(conclusion)
         lines.append('')
@@ -588,8 +587,6 @@ def build_brief_markdown(pkg: dict) -> str:
         lines.append(f'**今日主盯**：{"、".join(primary)}')
     if cands:
         lines.append(f'**发酵观察**：{"、".join(cands)}')
-    if watch:
-        lines.append(f'**人气等待**：{"、".join(watch)}')
 
     lines.append('')
     lines.append(f'*简报 · {meta.get("generated_at", "")}*')

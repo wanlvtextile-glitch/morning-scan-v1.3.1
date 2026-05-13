@@ -14,12 +14,16 @@ def build_analysis_output(
     hotrank: list,
     hotrank_signals: list,
     unmatched_count: int,
+    preprocess_signal_stats: dict | None = None,
+    dedup_decisions: list | None = None,
 ) -> dict:
     return {
         'generated_at':   datetime.now().isoformat(),
         'confidence':     confidence,
         'source_stats':   source_stats,
         'dedup_stats':    dedup_stats,
+        'preprocess_signal_stats': preprocess_signal_stats or {},
+        'dedup_decisions': dedup_decisions or [],
         'sectors':        sectors,
         'hotrank':        hotrank[:20],
         'hotrank_signals': hotrank_signals,

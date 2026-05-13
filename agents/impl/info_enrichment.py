@@ -107,17 +107,25 @@ class InfoEnrichmentAgent(BaseAgent, ScanAgentInterface):
         prompt = self._load_prompt('stock_supplement.txt')
 
         max_items = self._config.node_cfg('info_enrichment', 'stock_supplement').get('max_items', 15)
-        items = state.get_sector_items(
+        logic_units = state.get_sector_logic_units(
             task['sector_name'],
-            max_n=max_items,
-            fields=['title', 'content_preview'],
-            exclude_recap=True,
+            max_n=min(max_items, 8),
+            fields=[
+                'unit_key',
+                'unit_type',
+                'title',
+                'summary',
+                'dominant_signal',
+                'signal_confidence',
+                'related_symbols_or_sectors',
+                'stock_branches',
+            ],
         )
         ctx = {
             'sector_name':     task['sector_name'],
             'group':           task['group'],
             'existing_stocks': existing_names,
-            'top_items':       items,
+            'logic_units':     logic_units,
         }
         messages = [
             {'role': 'system', 'content': prompt},

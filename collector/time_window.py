@@ -4,10 +4,11 @@
 # 使用 chinese_calendar 判断节假日和调休，覆盖五一、春节等长假。
 # 上限保护：连续长假后窗口最长不超过 MAX_WINDOW_DAYS 天，防止采集量过大。
 
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, timezone
 from chinese_calendar import is_holiday
 
 MAX_WINDOW_DAYS = 5  # 窗口最长天数（春节/五一等长假后生效）
+CHINA_TZ = timezone(timedelta(hours=8))
 
 
 def is_trading_day(d: date) -> bool:
@@ -31,13 +32,13 @@ def get_time_window():
     end   = 今日 09:00
     """
     today = date.today()
-    end   = datetime.combine(today, datetime.min.time().replace(hour=9))
+    end   = datetime.combine(today, datetime.min.time().replace(hour=9), tzinfo=CHINA_TZ)
     prev  = get_previous_trading_day(today)
-    start = datetime.combine(prev, datetime.min.time().replace(hour=15))
+    start = datetime.combine(prev, datetime.min.time().replace(hour=15), tzinfo=CHINA_TZ)
 
     # 上限保护：长假后窗口超过 MAX_WINDOW_DAYS 天时截断
     earliest_allowed = datetime.combine(
-        today - timedelta(days=MAX_WINDOW_DAYS), datetime.min.time()
+        today - timedelta(days=MAX_WINDOW_DAYS), datetime.min.time(), tzinfo=CHINA_TZ
     )
     if start < earliest_allowed:
         start = earliest_allowed
