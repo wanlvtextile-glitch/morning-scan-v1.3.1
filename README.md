@@ -42,6 +42,120 @@ run.py / cli.py
      -> output_layer/
 ```
 
+## 目录结构
+
+```text
+.
+├── cli.py                          # 终端入口（check / run / doctor）
+├── run.py                          # Claude Code Skill 入口
+├── pipeline.py                     # 全流程协调 + 唯一文件 I/O 层
+├── analyzer.py                     # 分析层入口（纯计算，不写文件）
+├── checks.py                       # 启动前环境校验
+│
+├── collector/                      # 数据采集层
+│   ├── entry.py                    # collect() 对外入口
+│   ├── orchestrator.py             # 并发调度 + CollectorOutput 组装
+│   ├── sources.py                  # 淘股吧 / 同花顺 / 雪球 抓取
+│   ├── zsxq_source.py              # 知识星球 REST API 采集
+│   ├── social_sources.py           # 社交源公共工具函数
+│   ├── registry.py                 # 数据源注册表
+│   ├── models.py                   # NewsItem / SourceResult / CollectorOutput
+│   ├── http_client.py              # 全局 HTTP 预算 + fetch_with_retry
+│   ├── market_data.py              # 美股行情采集
+│   └── time_window.py              # 时间窗口计算（A股交易日逻辑）
+│
+├── preprocessor/                   # 预处理层（去重 / 聚类 / 信号标注）
+│   ├── entry.py
+│   ├── rules.py
+│   ├── cluster.py
+│   ├── evidence.py
+│   ├── conclusions.py
+│   ├── downstream.py
+│   ├── output.py
+│   └── report.py
+│
+├── sector_identifier/              # 板块识别层
+│   ├── entry.py
+│   ├── rules.py
+│   ├── evidence.py
+│   ├── conclusions.py
+│   ├── downstream.py
+│   ├── output.py
+│   └── report.py
+│
+├── analysis/                       # 分析层（星级评分 / 阶段判断）
+│   ├── entry.py
+│   ├── scorer.py
+│   ├── stage_rules.py
+│   ├── stage_definitions.py
+│   ├── conclusions.py
+│   ├── downstream.py
+│   ├── output.py
+│   └── report.py
+│
+├── dual_score/                     # 双维评分层（持续性 / 发酵概率）
+│   ├── entry.py
+│   ├── continuation.py
+│   ├── fermentation.py
+│   ├── downstream.py
+│   ├── output.py
+│   └── report.py
+│
+├── editorial_layer/                # 编辑层（报告分组 / 个股合并 / 逻辑摘要）
+│   ├── entry.py
+│   ├── sector_builder.py
+│   ├── stock_merger.py
+│   ├── logic_summary.py
+│   ├── recommendations.py
+│   ├── report_package.py
+│   ├── market_context.py
+│   └── downstream.py
+│
+├── agents/                         # LLM Agent 层
+│   ├── entry.py
+│   ├── state.py
+│   ├── interface.py
+│   ├── config.py
+│   ├── base.py
+│   ├── impl/
+│   │   ├── info_enrichment.py      # 信息补全 Agent
+│   │   └── semantic_judgment.py    # 语义判断 Agent
+│   ├── prompts/                    # 各 Agent 提示词
+│   └── provider/                   # LLM 供应商适配（Anthropic / OpenAI-compat）
+│
+├── output_layer/                   # 输出层（Markdown 报告渲染）
+│   ├── entry.py                    # build_report_from_editorial() 唯一出口
+│   ├── report.py
+│   ├── logic_render.py
+│   ├── rules.py
+│   ├── conclusions.py
+│   ├── downstream.py
+│   └── output.py
+│
+├── config/                         # 运行时配置（无凭据）
+│   ├── agent_config.json           # Agent 开关 / 限流
+│   ├── source_registry.json        # 数据源注册
+│   ├── social_sources.json         # 社交源配置
+│   └── zsxq_source.json            # 知识星球采集参数
+│
+├── data/
+│   └── stocks_dict.csv             # A 股股票字典（实体校验用）
+│
+├── skill/                          # Skill 运维文档
+│   ├── SKILL.md                    # 项目维护主文档
+│   ├── MORNING_SCAN_RUNTIME_RULES.md
+│   └── ZSXQ_LIVE_COLLECTION.md
+│
+├── tests/                          # 回归测试套件（51 个测试）
+│
+├── reports/                        # 报告归档目录（运行时生成，不入库）
+├── runs/                           # 每次运行完整归档（不入库）
+│
+├── .env.example                    # 环境变量模板
+├── requirements.txt
+└── GUIDE.md                        # 运维操作指南
+```
+
 当前主源：
 
 - 淘股吧
